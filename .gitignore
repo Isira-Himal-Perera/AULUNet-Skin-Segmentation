@@ -1,0 +1,22 @@
+# Python & IDE
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.vscode/
+.idea/
+
+# PyTorch Checkpoints & Outputs
+*.pth
+*.pt
+*.ckpt
+runs/
+wandb/
+*.log
+
+# Datasets (Prevent uploading heavy ISIC images to GitHub)
+data/
+*.zip
+*.tar.gz
