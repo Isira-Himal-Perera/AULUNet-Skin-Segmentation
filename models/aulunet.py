@@ -35,12 +35,13 @@ class AULUNet(nn.Module):
         # Stage 0: channels[0] -> channels[0] (handled by init)
         # Subsequent stages use AvgPool2d(2) then AKF + PointConv
         self.enc_akfs = nn.ModuleList([
-            AdaptiveKernelFusion(channels[i]) for i in range(len(channels))
+            AdaptiveKernelFusion(channels[i]) 
+            for i in range(len(channels)-1)
         ])
         
         self.enc_pointconvs = nn.ModuleList([
-            PointConv(channels[i], channels[i+1]) if i < len(channels) - 1 else PointConv(channels[i], channels[i])
-            for i in range(len(channels))
+            PointConv(channels[i], channels[i+1])
+            for i in range(len(channels)-1)
         ])
         
         # Bottleneck RGF module
@@ -49,7 +50,7 @@ class AULUNet(nn.Module):
         # Decoder & Skip Gates (LSG)
         # Decoder flows bottom-up from bottleneck back to full resolution
         self.dec_pointconvs = nn.ModuleList([
-            PointConv(channels[i+1] if i < len(channels)-1 else channels[-1], channels[i])
+            PointConv(channels[i+1], channels[i])
             for i in range(len(channels)-2, -1, -1)
         ])
         
@@ -74,23 +75,15 @@ class AULUNet(nn.Module):
         # --- ENCODER ---
         x = self.init_conv(x)
         x = self.init_akf(x)
-        
-        # Stage 0
-        feat = self.enc_akfs[0](x)
-        enc_features.append(feat)
-        x = self.enc_pointconvs[0](feat)
-        
-        # Stages 1 to 5
-        for i in range(1, len(self.enc_channels)):
+        enc_features.append(x)
+
+        for i in range(len(self.enc_channels) - 1):
             x = F.avg_pool2d(x, kernel_size=2, stride=2)
-            feat = self.enc_akfs[i](x)
-            if i < len(self.enc_channels) - 1:
-                enc_features.append(feat)
-                x = self.enc_pointconvs[i](feat)
-            else:
-                # Bottleneck stage
-                x = feat
-                
+            x = self.enc_akfs[i](x)
+            x = self.enc_pointconvs[i](x)
+            if i < len(self.enc_channels) - 2:
+                enc_features.append(x)
+
         # --- BOTTLENECK ---
         x = self.rgf(x)
         
@@ -104,7 +97,7 @@ class AULUNet(nn.Module):
             x = F.interpolate(x, size=(target_h, target_w), mode='bilinear', align_corners=True)
             
             # PointConv on decoder feature
-            x = self.dec_pointconws[dec_idx](x) if hasattr(self, 'dec_pointconws') else self.dec_pointconvs[dec_idx](x)
+            x = self.dec_pointconvs[dec_idx](x)
             
             # Skip connection via LSG (Decoder feature x, Encoder feature enc_features[i])
             x = self.lsgs[dec_idx](x, enc_features[i])
