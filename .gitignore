@@ -14,6 +14,7 @@ env/
 *.ckpt
 runs/
 wandb/
+logs/
 *.log
 
 # Datasets (Prevent uploading heavy ISIC images to GitHub)
