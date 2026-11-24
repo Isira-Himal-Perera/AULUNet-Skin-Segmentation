@@ -7,6 +7,9 @@ from models.rgf import ResidualGlobalFusion
 from models.lsg import LightweightSkipGate
 
 
+DEFAULT_CHANNELS = (5, 10, 15, 25, 35, 60)
+
+
 class PointConv(nn.Module):
     """PointConv block: 1x1 Conv -> BatchNorm2d -> ReLU"""
     def __init__(self, in_channels, out_channels):
@@ -36,55 +39,74 @@ class Add(nn.Module):
 
 
 class AULUNet(nn.Module):
-    def __init__(self, channels=[5, 10, 15, 25, 35, 60], akf=True, rgf=True, lsg=True, in_channels=3, out_channels=1):
+    def __init__(
+        self,
+        channels=DEFAULT_CHANNELS,
+        akf=True,
+        rgf=True,
+        lsg=True,
+        in_channels=3,
+        out_channels=1,
+    ):
         super(AULUNet, self).__init__()
 
-        self.enc_channels = channels
+        self.enc_channels = list(channels)
 
         # Initial encoder convolution + AKF (or depthwise 1x1 fallback)
-        self.init_conv = nn.Conv2d(in_channels, channels[0], kernel_size=3, padding=1, bias=False)
-        self.init_akf = self._build_akf(channels[0], akf)
+        self.init_conv = nn.Conv2d(in_channels, self.enc_channels[0], kernel_size=3, padding=1, bias=False)
+        self.init_akf = self._build_akf(self.enc_channels[0], akf)
 
         # Encoder stages: AvgPool2d(2) -> AKF -> PointConv
         self.enc_akfs = nn.ModuleList([
-            self._build_akf(channels[i], akf)
-            for i in range(len(channels) - 1)
+            self._build_akf(self.enc_channels[i], akf)
+            for i in range(len(self.enc_channels) - 1)
         ])
 
         self.enc_pointconvs = nn.ModuleList([
-            PointConv(channels[i], channels[i + 1])
-            for i in range(len(channels) - 1)
+            PointConv(self.enc_channels[i], self.enc_channels[i + 1])
+            for i in range(len(self.enc_channels) - 1)
         ])
 
-        # Bottleneck RGF module (bypassed when rgf=False)
-        self.rgf = ResidualGlobalFusion(channels[-1]) if rgf else nn.Identity()
+        # Bottleneck RGF module (identity pass-through when rgf=False)
+        self.rgf = ResidualGlobalFusion(self.enc_channels[-1]) if rgf else nn.Identity()
 
         # Decoder & Skip Gates (LSG or Add)
         self.dec_pointconvs = nn.ModuleList([
-            PointConv(channels[i + 1], channels[i])
-            for i in range(len(channels) - 2, -1, -1)
+            PointConv(self.enc_channels[i + 1], self.enc_channels[i])
+            for i in range(len(self.enc_channels) - 2, -1, -1)
         ])
 
         self.lsgs = nn.ModuleList([
-            LightweightSkipGate(channels_decoder=channels[i], channels_encoder=channels[i])
-            if lsg else Add(channels_decoder=channels[i], channels_encoder=channels[i])
-            for i in range(len(channels) - 2, -1, -1)
+            LightweightSkipGate(
+                channels_decoder=self.enc_channels[i],
+                channels_encoder=self.enc_channels[i],
+            )
+            if lsg
+            else Add(
+                channels_decoder=self.enc_channels[i],
+                channels_encoder=self.enc_channels[i],
+            )
+            for i in range(len(self.enc_channels) - 2, -1, -1)
         ])
 
         self.dec_akfs = nn.ModuleList([
-            self._build_akf(channels[i], akf)
-            for i in range(len(channels) - 2, -1, -1)
+            self._build_akf(self.enc_channels[i], akf)
+            for i in range(len(self.enc_channels) - 2, -1, -1)
         ])
 
         # Final output head
-        self.final_conv = nn.Conv2d(channels[0], out_channels, kernel_size=1, bias=True)
+        self.final_conv = nn.Conv2d(self.enc_channels[0], out_channels, kernel_size=1, bias=True)
         self.sigmoid = nn.Sigmoid()
 
+    
     def _build_akf(self, num_channels, akf_enabled):
         if akf_enabled:
             return AdaptiveKernelFusion(num_channels)
-        return nn.Conv2d(num_channels, num_channels, kernel_size=1, groups=num_channels, bias=False)
-
+        return nn.Sequential(
+            nn.Conv2d(num_channels, num_channels, kernel_size=1, groups=num_channels, bias=True),
+            nn.ReLU(inplace=True),
+        )
+    
     def forward(self, x):
         enc_features = []
 

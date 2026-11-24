@@ -1,23 +1,34 @@
-# Python & IDE
-__pycache__/
-*.py[cod]
-*$py.class
+# Python & virtual environments
 .venv/
 venv/
 env/
-.vscode/
-.idea/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
 
-# PyTorch Checkpoints & Outputs
+# Datasets (ISIC 2018 raw & pre-processed)
+data/
+
+# Model checkpoints & weights
+checkpoints/
 *.pth
 *.pt
 *.ckpt
-runs/
-wandb/
+*.onnx
+*.safetensors
+
+# Training & ablation logs
 logs/
 *.log
 
-# Datasets (Prevent uploading heavy ISIC images to GitHub)
-data/
-*.zip
-*.tar.gz
+# Evaluation outputs & sample previews
+eval_results/
+custom_prediction.png
+*_eval.png
+
+# OS & editor artifacts
+.DS_Store
+Thumbs.db

@@ -12,8 +12,20 @@ from models.aulunet import (
     aulunet_v3,
 )
 
+try:
+    from thop import profile
+    HAS_THOP = True
+except ImportError:
+    HAS_THOP = False
+
+
 def test_models():
-    x = torch.randn(2, 3, 256, 256)  # Batch of 2, RGB, 256x256
+    if not HAS_THOP:
+        print("Warning: 'thop' is not installed. Install it via `pip install thop` to compute GFLOPs.\n")
+
+    # Profile with batch_size=1 for standard per-image GFLOPs;
+    # use `x = torch.randn(2, 3, 256, 256)` if you want batch=2 GFLOPs.
+    x = torch.randn(1, 3, 256, 256)
 
     models = [
         ("Baseline", baseline),
@@ -35,10 +47,21 @@ def test_models():
         with torch.no_grad():
             out = model(x)
 
-        params = sum(p.numel() for p in model.parameters()) / 1e6
-        print(
-            f"[{name:^10}] Output Shape: {out.shape} | Parameters: {params:.3f}M"
-        )
+        params_m = sum(p.numel() for p in model.parameters()) / 1e6
+
+        if HAS_THOP:
+            # thop returns MACs; multiply by 2 for FLOPs (1 MAC = 2 FLOPs: 1 mul + 1 add)
+            macs, _ = profile(model, inputs=(x,), verbose=False)
+            gflops = (macs * 2) / 1e9
+            print(
+                f"[{name:^10}] Output Shape: {tuple(out.shape)} | "
+                f"Params: {params_m:.3f}M | GFLOPs: {gflops:.3f}"
+            )
+        else:
+            print(
+                f"[{name:^10}] Output Shape: {tuple(out.shape)} | "
+                f"Params: {params_m:.3f}M | GFLOPs: N/A"
+            )
 
 
 if __name__ == "__main__":
